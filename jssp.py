@@ -6,6 +6,7 @@ from networkx.algorithms import dag_longest_path,dag_longest_path_length
 import pygraphviz as pgv
 import pprint as pp
 from copy import deepcopy
+from random import choice
 
 class JSSP:
     def __init__(self,seq,proc):
@@ -52,10 +53,12 @@ class JSSP:
 
         print(self.ops)
 
-        s = self.feasible_solution()
+        s = self.GT()
 
-        nbs = self.return_neighbours(s)
-        #pp.pprint(nbs)
+        nbs,swaps = self.return_neighbours(s)
+
+        pp.pprint(nbs)
+        pp.pprint(swaps)
 
     def draw(self):
         G = nx.DiGraph()
@@ -130,7 +133,7 @@ class JSSP:
     def cost(self,E):
         if self.is_feasible(E):
             #print(dag_longest_path(self.G))
-            #print(dag_longest_path_length(self.G))
+            print(dag_longest_path_length(self.G))
             return dag_longest_path(self.G) 
 
     def get_blocks(self,path):
@@ -150,6 +153,7 @@ class JSSP:
         path = self.cost(E)
         blocks = self.get_blocks(path)
         nbs = []
+        swaps = []
         for block in blocks:
             n_block = len(block)
             if n_block<=1:
@@ -162,12 +166,14 @@ class JSSP:
                     js = self.JS[v]
                     if js in path:
                         nbs.append(self.insert_after(u,v,E))
+                        swaps.append((u,v))
             f = 0 # placeholder for first element
             for j,v in enumerate(block):
                 if j==0:
                     f = v
                     continue
                 nbs.append(self.move_to_start(f,v,E))
+                swaps.append((f,v))
 
             for i in range(n_block):
                 for j in range(i+1,n_block):
@@ -177,17 +183,21 @@ class JSSP:
                     jp = self.JP[u]
                     if jp in path:
                         nbs.append(self.insert_after(u,v,E))
+                        swaps.append((u,v))
             
             for i,u in enumerate(block):
                 jp = self.JP[u]
-                print(f" IM u : {u}")
                 if jp in path:
-                    nbs.append(self.move_succesive(u,E))
-
-        return nbs
+                    ans = self.move_succesive(u,E)
+                    if ans is not None:
+                        nbs.append(ans[0])
+                        swaps.append((u,ans[1]))
+        for n in nbs:
+            print(self.is_feasible_sol(n))
+        return nbs,swaps
     
     def insert_after(self,u,v,E):
-        E_new = deepcopy(E) # make sure this copies by value not ref
+        E_new = deepcopy(E) 
         
         # original edge:
         ms_u,mp_u,ms_v,mp_v = None,None,None,None
@@ -235,7 +245,7 @@ class JSSP:
         return E_new
     
     def insert_before(self,u,v,E):
-        E_new = deepcopy(E) # make sure this copies by value not ref
+        E_new = deepcopy(E) 
         
         ms_u,mp_u,ms_v,mp_v = None,None,None,None
         for edge in E:
@@ -261,7 +271,7 @@ class JSSP:
         return E_new
         
     def move_succesive(self,u,E):
-        E_new = deepcopy(E) # make sure this copies by value not ref
+        E_new = deepcopy(E) 
         ms_u,mp_u = None,None
         for edge in E:
             if edge[0] == u:
@@ -276,27 +286,89 @@ class JSSP:
                 msms_u = edge[1]
                 E_new.remove(edge)
         if ms_u is None:
-            return deepcopy(E)
+            return None
         if mp_u is not None:
             E_new.append((mp_u,ms_u))
         if msms_u is not None:
             E_new.append((u,msms_u))
         if ms_u is not None:
             E_new.append((ms_u,u))
-        return E_new
+        return E_new,ms_u
         
+    def GT(self):
+        mach_schedule = [[] for i in range(self.m)]
+        
+        pred = [None for i in range(self.n_ops)]
+        succ = [None for i in range(self.n_ops)]
 
+        for job,row in enumerate(seq):
+            for i,mch in enumerate(row):
+                amt = len(row)
+                u = self.ops[(mch,job)]
+                if i > 0:
+                    pred[u] = self.ops[(row[i-1],job)]
+                if i < amt-1:
+                    succ[u] = self.ops[(row[i+1],job)]
+
+        S = [ x for x,pre in enumerate(pred) if pre is None]
+        rho = [0 for i in range(self.n_ops)] # earliest availibity
+
+        for _,_ in enumerate(list(range(self.n_ops))):
+            b = [0 for s in S]
+            for idx,s in enumerate(S):
+                mach,job = self.MJ[s]
+                b[idx] = rho[s] + self.proc[mach,job]
+            bmin = min(b)
+            min_idx = choice([i for i, x in enumerate(b) if x == bmin])
+            mstar,_ = self.MJ[S[min_idx]]
+            
+            feasible_actions = []
+            for s in S:
+                m,j  = self.MJ[s]
+                if m == mstar and rho[s] < bmin:
+                    feasible_actions.append(s)
+            scheduled = choice(feasible_actions)
+            mach,job = self.MJ[scheduled]
+
+            S.remove(scheduled)
+            mach_schedule[mach].append(scheduled)
+
+            succesor = succ[scheduled]
+
+            if succesor is not None:
+                succ_mach,_ = self.MJ[succesor]
+
+                S.append(succesor)
+                mp = mach_schedule[succ_mach][-1] if len(mach_schedule[succ_mach])> 0 else None
+                lp = self.processing_time[mp+1] + rho[mp] if mp is not None else -1
+
+                rho[succesor] = max(rho[scheduled] + self.proc[mach,job],lp)
+
+            pp.pprint(mach_schedule)
+
+        disjunctive_edges = []
+        for machine in range(self.m):
+            njobs = len(mach_schedule[machine])
+            schedule = mach_schedule[machine]
+            for x in range(njobs):
+                if x < njobs-1:
+                    print((schedule[x],schedule[x+1]))
+                    disjunctive_edges.append((schedule[x],schedule[x+1])) 
+
+        return disjunctive_edges
 if __name__ == "__main__":
 
     # shape: n x ...  
-    seq = np.array([[0, 1, 2],
-                    [0, 2, 1],
-                    [1, 0, 2]])
+    seq = np.array([[0, 1, 2,4,3],
+                    [0, 2, 1,4,3],
+                    [1, 0, 2,3,4]])
     
     # shape: m * n if a job is not a machine set it to -1
     proc = np.array([[3, 3, 5],
                      [2, 1, 2],
-                     [5, 5, 3]])
+                     [5, 5, 3],
+                     [8, 1, 10],
+                     [8, 1, 10]])
 
     jssp = JSSP(seq,proc)
 
