@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from networkx.drawing.nx_agraph import graphviz_layout, to_agraph
 from networkx.algorithms import dag_longest_path,dag_longest_path_length
-import pygraphviz as pgv
+# import pygraphviz as pgv
 import pprint as pp
 from copy import deepcopy
 from random import choice
@@ -40,8 +40,8 @@ class JSSP:
                     self.A.append((u,self.n_ops))
                 u+=1
         self.processing_time = [proc[self.MJ[i]] if i>-1 and i < self.n_ops else 0 for i in range(-1,self.n_ops+1)]
-        print(self.processing_time)
-        # INEFFCIENT - might not actually need this 
+        #print(self.processing_time)
+
         for u in self.V:
             for v in self.V:
                 mu,ju = self.MJ[u]
@@ -51,34 +51,36 @@ class JSSP:
         
         self.ops = {v:k for (k,v) in self.MJ.items()}
 
-    def draw(self):
-        G = nx.DiGraph()
-        G.add_nodes_from([i+1 for i in self.V])
-        G.add_edges_from([(i[0]+1,i[1]+1) for i in self.A],style ='solid')
-        G.add_edges_from([(i[0]+1,i[1]+1) for i in self.E],style ='dashed')
-        # set defaults
-        G.graph['graph']={'rankdir':'LR'}
-        G.graph['node']={'shape':'circle'}
-        G.graph['edges']={'arrowsize':'2.0'}
-        A = to_agraph(G)
-        #print(A)
-        A.layout('dot')
-        A.draw('graph.png')
+        self.arc_lengths = len(self.lexographic_solution())
+
+    # def draw(self):
+    #     G = nx.DiGraph()
+    #     G.add_nodes_from([i+1 for i in self.V])
+    #     G.add_edges_from([(i[0]+1,i[1]+1) for i in self.A],style ='solid')
+    #     G.add_edges_from([(i[0]+1,i[1]+1) for i in self.E],style ='dashed')
+    #     # set defaults
+    #     G.graph['graph']={'rankdir':'LR'}
+    #     G.graph['node']={'shape':'circle'}
+    #     G.graph['edges']={'arrowsize':'2.0'}
+    #     A = to_agraph(G)
+    #     #print(A)
+    #     A.layout('dot')
+    #     A.draw('graph.png')
     
-    def draw_solution(self,disjunctive_edges):
-        G = nx.DiGraph()
-        G.add_nodes_from([i+1 for i in self.V])
-        G.add_edges_from([(i[0]+1,i[1]+1) for i in self.A],style ='solid')
-        G.add_edges_from([(i[0]+1,i[1]+1) for i in disjunctive_edges],style ='dashed')
-        # set defaults
-        G.graph['graph']={'rankdir':'LR'}
-        G.graph['node']={'shape':'circle'}
-        G.graph['edges']={'arrowsize':'2.0'}
-        print(self.is_feasible(disjunctive_edges))
-        A = to_agraph(G)
-        #print(A)
-        A.layout('dot')
-        A.draw('solution.png')
+    # def draw_solution(self,disjunctive_edges):
+    #     G = nx.DiGraph()
+    #     G.add_nodes_from([i+1 for i in self.V])
+    #     G.add_edges_from([(i[0]+1,i[1]+1) for i in self.A],style ='solid')
+    #     G.add_edges_from([(i[0]+1,i[1]+1) for i in disjunctive_edges],style ='dashed')
+    #     # set defaults
+    #     G.graph['graph']={'rankdir':'LR'}
+    #     G.graph['node']={'shape':'circle'}
+    #     G.graph['edges']={'arrowsize':'2.0'}
+    #     print(self.is_feasible(disjunctive_edges))
+    #     A = to_agraph(G)
+    #     #print(A)
+    #     A.layout('dot')
+    #     A.draw('solution.png')
 
     def init_dicts(self):
         self.MJ = {u:(None,None) for u in self.V}
@@ -94,7 +96,7 @@ class JSSP:
         for job,order  in enumerate(self.seq):
             for machine in order:
                 mach_schedule[machine].append(self.ops[(machine,job)])
-        print(mach_schedule)
+
         
         for machine in range(self.m):
             njobs = len(mach_schedule[machine])
@@ -103,7 +105,7 @@ class JSSP:
                 if x < njobs-1:
                     print((schedule[x],schedule[x+1]))
                     disjunctive_edges.append((schedule[x],schedule[x+1])) 
-        print(disjunctive_edges)
+
         return disjunctive_edges
 
     def is_feasible(self,E):
@@ -111,15 +113,15 @@ class JSSP:
         self.G.add_nodes_from([i for i in self.V])
         self.G.add_weighted_edges_from([(i[0],i[1],self.processing_time[i[0]+1]) for i in self.A])
         self.G.add_weighted_edges_from([(i[0],i[1],self.processing_time[i[0]+1]) for i in E])
-        assert(nx.is_directed_acyclic_graph(self.G) and len(E) == len(self.lexographic_solution()))
-        return True
-    
+        return nx.is_directed_acyclic_graph(self.G) and len(E) == self.arc_lengths
+        
+
     def is_feasible_sol(self,E):
         G = nx.DiGraph()
         G.add_nodes_from([i for i in self.V])
         G.add_weighted_edges_from([(i[0],i[1],self.processing_time[i[0]+1]) for i in self.A])
         G.add_weighted_edges_from([(i[0],i[1],self.processing_time[i[0]+1]) for i in E])
-        return nx.is_directed_acyclic_graph(G) and (len(E) == len(self.lexographic_solution()))
+        return nx.is_directed_acyclic_graph(self.G) and len(E) == self.arc_lengths
     
     def critical_path(self,E):
         if self.is_feasible(E):
@@ -152,12 +154,12 @@ class JSSP:
             if n_block<=1:
                 continue
             for i in range(n_block):
-                for j in range(i+1,n_block):
+                for j in range(n_block-1,n_block):
                     u = block[i]
                     v = block[j]
                     
                     js = self.JS[v]
-                    if js in path:
+                    if js in path[:-1]:
                         new_edges = deepcopy(E)
                         edges_added = []
                         edges_removed = []
@@ -185,17 +187,19 @@ class JSSP:
                         if mp_u is not None and ms_u is not None:
                             new_edges.append((mp_u,ms_u))
                             edges_added.append((mp_u,ms_u))
-                        assert(self.is_feasible_sol(new_edges))
-                        nbs.append(new_edges)
-                        swaps.append((u,v))
+                        if self.is_feasible_sol(new_edges):
+                            nbs.append(new_edges)
+                            swaps.append((u,v))
             
-            # f = 0 
+            #f = 0 
             # for j,v in enumerate(block):
             #     if j==0:
             #         f = v
             #         continue
-            #     nbs.append(self.move_to_start(f,v,E))
-            #     swaps.append((f,v))
+            #     new_edges = self.move_to_start(f,v,E)
+            #     if self.is_feasible_sol(new_edges):
+            #         nbs.append(new_edges)
+            #         swaps.append((f,v))
 
             # for i in range(n_block):
             #     for j in range(i+1,n_block):
@@ -204,19 +208,20 @@ class JSSP:
                     
             #         jp = self.JP[u]
             #         if jp in path:
-                        
-            #             nbs.append(self.insert_before(u,v,E))
-            #             assert(self.is_feasible_sol(nbs[-1]))
-            #             swaps.append((u,v))
+            #             new_edges = self.insert_before(u,v,E)
+            #             if self.is_feasible_sol(new_edges):
+            #                 nbs.append(new_edges)
+            #                 swaps.append((u,v))
             
             # for i,u in enumerate(block):
             #     jp = self.JP[u]
             #     if jp in path:
             #         ans = self.move_succesive(u,E)
             #         if ans is not None:
-            #             nbs.append(ans[0])
-            #             swaps.append((u,ans[1]))
-            #             assert(self.is_feasible_sol(nbs[-1]))
+            #             if self.is_feasible_sol(ans[0]):
+            #                 nbs.append(ans[0])
+            #                 swaps.append((u,ans[1]))
+                        
                 
         return nbs,swaps
     
@@ -241,7 +246,6 @@ class JSSP:
             E_new.append((u,ms_v))
         if mp_u is not None:
             E_new.append((mp_u,ms_u))
-        assert(self.is_feasible_sol(E_new))
         return E_new
     
     def move_to_start(self,f,v,E):
@@ -267,7 +271,6 @@ class JSSP:
 
 
 
-        assert(self.is_feasible_sol(E_new))
         return E_new
     
     def insert_before(self,u,v,E):
@@ -292,8 +295,6 @@ class JSSP:
             E_new.append((mp_v,ms_v))
         if mp_u is not None:
             E_new.append((mp_u,v))
-        
-        assert(self.is_feasible_sol(E_new))
         return E_new
         
     def move_succesive(self,u,E):

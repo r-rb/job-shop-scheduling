@@ -19,8 +19,6 @@ def read_in(file):
     seq = np.array(seq)
     return seq,proc
 
-
-
 if __name__ == "__main__":
     seq,proc = read_in("medium.text")
     jssp = JSSP(seq,proc)

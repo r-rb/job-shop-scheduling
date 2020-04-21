@@ -21,7 +21,7 @@ def tabu_search(jssp,initial_solution,max_iterations=10000):
     while True:
         nbs,swps = jssp.get_neighbours(s_current)
         evaluated = [(i,jssp.evaluate(nb)) for i,nb in enumerate(nbs)]
-        costs = sorted(evaluated,key =lambda x:x[1])
+        costs = sorted(evaluated,key =lambda x:x[1] if x[1] is not None else np.Inf)
         idx = 0
         for c in costs:
             idx = c[0]
