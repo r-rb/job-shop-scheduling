@@ -51,15 +51,6 @@ class JSSP:
         
         self.ops = {v:k for (k,v) in self.MJ.items()}
 
-        print(self.ops)
-
-        s = self.GT()
-
-        nbs,swaps = self.return_neighbours(s)
-
-        pp.pprint(nbs)
-        pp.pprint(swaps)
-
     def draw(self):
         G = nx.DiGraph()
         G.add_nodes_from([i+1 for i in self.V])
@@ -93,10 +84,9 @@ class JSSP:
         self.MJ = {u:(None,None) for u in self.V}
         self.JS = {u:None for u in self.V}
         self.JP = {u:None for u in self.V}
-        self.MS = dict()
-        self.MP = dict()
     
-    def feasible_solution(self):
+    # always works!
+    def lexographic_solution(self):
         # need to add
         disjunctive_edges = []
         mach_schedule = [[] for i in range(self.m)]
@@ -121,20 +111,23 @@ class JSSP:
         self.G.add_nodes_from([i for i in self.V])
         self.G.add_weighted_edges_from([(i[0],i[1],self.processing_time[i[0]+1]) for i in self.A])
         self.G.add_weighted_edges_from([(i[0],i[1],self.processing_time[i[0]+1]) for i in E])
-        return nx.is_directed_acyclic_graph(self.G)
+        assert(nx.is_directed_acyclic_graph(self.G) and len(E) == len(self.lexographic_solution()))
+        return True
     
     def is_feasible_sol(self,E):
         G = nx.DiGraph()
         G.add_nodes_from([i for i in self.V])
         G.add_weighted_edges_from([(i[0],i[1],self.processing_time[i[0]+1]) for i in self.A])
         G.add_weighted_edges_from([(i[0],i[1],self.processing_time[i[0]+1]) for i in E])
-        return nx.is_directed_acyclic_graph(G)
+        return nx.is_directed_acyclic_graph(G) and (len(E) == len(self.lexographic_solution()))
     
-    def cost(self,E):
+    def critical_path(self,E):
         if self.is_feasible(E):
-            #print(dag_longest_path(self.G))
-            print(dag_longest_path_length(self.G))
-            return dag_longest_path(self.G) 
+            return dag_longest_path(self.G)
+
+    def evaluate(self,E):
+        if self.is_feasible(E):
+            return dag_longest_path_length(self.G)
 
     def get_blocks(self,path):
         blocks = []
@@ -149,8 +142,8 @@ class JSSP:
                     blocks[-1].append(p)
         return blocks
                 
-    def return_neighbours(self,E):
-        path = self.cost(E)
+    def get_neighbours(self,E):
+        path = self.critical_path(E)
         blocks = self.get_blocks(path)
         nbs = []
         swaps = []
@@ -165,41 +158,70 @@ class JSSP:
                     
                     js = self.JS[v]
                     if js in path:
-                        nbs.append(self.insert_after(u,v,E))
-                        swaps.append((u,v))
-            f = 0 # placeholder for first element
-            for j,v in enumerate(block):
-                if j==0:
-                    f = v
-                    continue
-                nbs.append(self.move_to_start(f,v,E))
-                swaps.append((f,v))
+                        new_edges = deepcopy(E)
+                        edges_added = []
+                        edges_removed = []
+                        mp_u,ms_u,mp_v,ms_v = None,None,None,None
+                        if i >=1:
+                            mp_u = block[i-1]
+                            new_edges.remove((mp_u,u))
+                            edges_removed.append((mp_u,u))
+                        if i <n_block-1:
+                            ms_u = block[i+1]
+                            new_edges.remove((u,ms_u))
+                            edges_removed.append((u,ms_u))
+                        if j >=1:
+                            mp_v = block[j-1]
+                        if j <n_block-1:
+                            ms_v = block[j+1]
+                            new_edges.remove((v,ms_v))
+                            edges_removed.append((v,ms_v))
 
-            for i in range(n_block):
-                for j in range(i+1,n_block):
-                    u = block[i]
-                    v = block[j]
-                    
-                    jp = self.JP[u]
-                    if jp in path:
-                        nbs.append(self.insert_after(u,v,E))
+                        new_edges.append((v,u))
+                        edges_added.append((v,u))
+                        if ms_v is not None:
+                            new_edges.append((u,ms_v))
+                            edges_added.append((u,ms_v))
+                        if mp_u is not None and ms_u is not None:
+                            new_edges.append((mp_u,ms_u))
+                            edges_added.append((mp_u,ms_u))
+                        assert(self.is_feasible_sol(new_edges))
+                        nbs.append(new_edges)
                         swaps.append((u,v))
             
-            for i,u in enumerate(block):
-                jp = self.JP[u]
-                if jp in path:
-                    ans = self.move_succesive(u,E)
-                    if ans is not None:
-                        nbs.append(ans[0])
-                        swaps.append((u,ans[1]))
-        for n in nbs:
-            print(self.is_feasible_sol(n))
+            # f = 0 
+            # for j,v in enumerate(block):
+            #     if j==0:
+            #         f = v
+            #         continue
+            #     nbs.append(self.move_to_start(f,v,E))
+            #     swaps.append((f,v))
+
+            # for i in range(n_block):
+            #     for j in range(i+1,n_block):
+            #         u = block[i]
+            #         v = block[j]
+                    
+            #         jp = self.JP[u]
+            #         if jp in path:
+                        
+            #             nbs.append(self.insert_before(u,v,E))
+            #             assert(self.is_feasible_sol(nbs[-1]))
+            #             swaps.append((u,v))
+            
+            # for i,u in enumerate(block):
+            #     jp = self.JP[u]
+            #     if jp in path:
+            #         ans = self.move_succesive(u,E)
+            #         if ans is not None:
+            #             nbs.append(ans[0])
+            #             swaps.append((u,ans[1]))
+            #             assert(self.is_feasible_sol(nbs[-1]))
+                
         return nbs,swaps
     
     def insert_after(self,u,v,E):
         E_new = deepcopy(E) 
-        
-        # original edge:
         ms_u,mp_u,ms_v,mp_v = None,None,None,None
         for edge in E:
             if edge[0] == u:
@@ -219,7 +241,7 @@ class JSSP:
             E_new.append((u,ms_v))
         if mp_u is not None:
             E_new.append((mp_u,ms_u))
-        #print(f"{u},{v}, is feasible? :{self.is_feasible_sol(E_new)}")
+        assert(self.is_feasible_sol(E_new))
         return E_new
     
     def move_to_start(self,f,v,E):
@@ -230,6 +252,8 @@ class JSSP:
         for edge in E:
             if edge[0] == f:
                 ms_f = edge[1]
+            if edge[1] == f:
+                mp_f == edge[0] 
             if edge[0] == v:
                 ms_v = edge[1]
                 E_new.remove(edge)
@@ -241,7 +265,9 @@ class JSSP:
         if ms_v is not None and mp_v is not None:
             E_new.append((mp_v,ms_v))
 
-        #print(f"{f},{v}, is feasible? :{self.is_feasible_sol(E_new)}")
+
+
+        assert(self.is_feasible_sol(E_new))
         return E_new
     
     def insert_before(self,u,v,E):
@@ -267,7 +293,7 @@ class JSSP:
         if mp_u is not None:
             E_new.append((mp_u,v))
         
-        print(f"{u},{v}, is feasible? :{self.is_feasible_sol(E_new)}")
+        assert(self.is_feasible_sol(E_new))
         return E_new
         
     def move_succesive(self,u,E):
@@ -285,23 +311,23 @@ class JSSP:
             if edge[0] == ms_u:
                 msms_u = edge[1]
                 E_new.remove(edge)
-        if ms_u is None:
+        if ms_u or msms_u is None:
             return None
         if mp_u is not None:
             E_new.append((mp_u,ms_u))
         if msms_u is not None:
             E_new.append((u,msms_u))
-        if ms_u is not None:
-            E_new.append((ms_u,u))
+        E_new.append((ms_u,u))
+        
         return E_new,ms_u
         
-    def GT(self):
+    def get_feasible(self):         
         mach_schedule = [[] for i in range(self.m)]
         
         pred = [None for i in range(self.n_ops)]
         succ = [None for i in range(self.n_ops)]
 
-        for job,row in enumerate(seq):
+        for job,row in enumerate(self.seq):
             for i,mch in enumerate(row):
                 amt = len(row)
                 u = self.ops[(mch,job)]
@@ -344,18 +370,16 @@ class JSSP:
 
                 rho[succesor] = max(rho[scheduled] + self.proc[mach,job],lp)
 
-            pp.pprint(mach_schedule)
-
         disjunctive_edges = []
         for machine in range(self.m):
             njobs = len(mach_schedule[machine])
             schedule = mach_schedule[machine]
             for x in range(njobs):
                 if x < njobs-1:
-                    print((schedule[x],schedule[x+1]))
                     disjunctive_edges.append((schedule[x],schedule[x+1])) 
 
         return disjunctive_edges
+
 if __name__ == "__main__":
 
     # shape: n x ...  
